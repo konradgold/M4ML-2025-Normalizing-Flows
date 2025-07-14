@@ -4,7 +4,8 @@ from typing import Optional
 
 class Scale(torch.nn.Module):
     def __init__(self, input_dim: int, scale_init: float = 0.4):
-        self.scale = self.scale = nn.Parameter(torch.full((input_dim,), scale_init))
+        super().__init__()
+        self.scale = self.scale = torch.nn.Parameter(torch.full((input_dim,), scale_init))
 
     def forward(self, x):
         x = torch.tanh(x)
@@ -12,7 +13,8 @@ class Scale(torch.nn.Module):
 
 class Translation(torch.nn.Module):
     def __init__(self, size: int):
-        self.ln = torch.nn.Linear(int, int, bias = True)
+        super().__init__()
+        self.ln = torch.nn.Linear(size, size, bias = True)
 
     def forward(self, x):
         return self.ln(x)
@@ -35,32 +37,32 @@ class AffineCoupling(torch.nn.Module):
         else:
             self.t = Translation(size)
         self.d = d
+        self.size = size
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert len(x.size()) == 2
         assert x.size(1) >= self.d
         y = torch.empty(x.size())
         y = self.mask * x
-        self.exp_s =torch.exp(self.s(x[:,:d])) # necessary to compute jacobian
-        y += (1-self.mask) * (x * (self.exp_s + self.t(x)))
+        self.exp_s = torch.exp(self.s(self.mask*x)) # necessary to compute jacobian
+        y += (1-self.mask) * (x * self.exp_s + self.t(self.mask*x))
         return y
 
     def inverse(self, y: torch.Tensor) -> torch.Tensor:
         assert len(y.size()) == 2
-        assert y.size(1) >= self.d
         x = torch.empty(y.size())
         x = self.mask * y
-        self.exp_ns = torch.exp(-self.s(y)) # necessary to compute jacobian
-        x[:,d:] = (1-self.mask) * (y - self.t(y)) * self.exp_ns
-        return y
+        self.exp_ns = torch.exp(-self.s(self.mask*y)) # necessary to compute jacobian
+        x += (1-self.mask) * ((y - self.t(self.mask*y)) * self.exp_ns)
+        return x
 
-    def test_identity(self):
-        size = (4, 3*d)
+    def test_identity(self, tolerance = 1e-6):
+        size = (3, self.size)
         x = torch.rand(size)
         y = self.forward(x)
-        tolerance = 1e-6
-        assert torch.allclose(x, self.inverse(y), atol=tolerance, rtol=tolerance)
-
+        recovered = self.inverse(y)
+        print(torch.min(recovered-x), torch.max(recovered-x))
+        assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
 
     
 
