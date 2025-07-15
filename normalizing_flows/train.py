@@ -20,7 +20,7 @@ dataloader = data.DataLoader(dataset, batch_size=128, shuffle=True)
 
 model = NormalizingFlow(input_dim=config.input_dim, num_layers=config.num_layers)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
 for epoch in range(config.num_epochs):
     for batch in dataloader:
         loss = compute_loss(batch[0], model)
