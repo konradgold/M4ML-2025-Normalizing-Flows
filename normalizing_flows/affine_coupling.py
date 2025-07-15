@@ -1,3 +1,4 @@
+from ast import List
 import torch
 from typing import Optional
 
@@ -100,11 +101,16 @@ class BatchNormFlow(torch.nn.Module):
         return x
 
 class NormalizingFlow(torch.nn.Module):
-    def __init__(self, input_dim, num_layers):
+    def __init__(self, input_dim, num_layers, masks:list[Optional[torch.Tensor]]=[]):
+        if len(masks) == 0:
+            masks = [None] * num_layers
         super().__init__()
         self.layers = torch.nn.ModuleList()
         for i in range(num_layers):
-            mask = (torch.arange(input_dim) % 2 == i % 2).float()
+            if masks[i] is not None:
+                mask = masks[i]
+            else:
+                mask = (torch.arange(input_dim) % 2 == i % 2).float()
             self.layers.append(AffineCoupling(size=input_dim, mask=mask))
             self.layers.append(BatchNormFlow(input_dim))
 
@@ -126,4 +132,12 @@ class NormalizingFlow(torch.nn.Module):
         for layer in reversed(self.layers):
             z = layer.inverse(z)
         return z
+    
+    def test_identity(self, tolerance=1e-6):
+        size = (3, self.layers[0].size)
+        x = torch.rand(size)
+        z, _ = self.forward_train(x)
+        recovered = self.inverse(z)
+        print(torch.min(recovered-x), torch.max(recovered-x))
+        assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
     
