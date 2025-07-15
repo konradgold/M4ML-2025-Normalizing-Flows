@@ -4,7 +4,7 @@ from typing import Optional
 
 
 class Scale(torch.nn.Module):
-    def __init__(self, input_dim: int, scale_init: float = 0.4):
+    def __init__(self, input_dim: int, scale_init: float = 0.9):
         super().__init__()
         self.scale = self.scale = torch.nn.Parameter(torch.full((input_dim,), scale_init))
         hidden_size = input_dim * 2

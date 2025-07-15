@@ -12,4 +12,4 @@ class Config:
         self.num_epochs = config.get("num_epochs", 150)
         self.batch_size = config.get("batch_size", 128)
         self.input_dim = config.get("input_dim", 2)
-        self.num_layers = config.get("num_layers", 12)
+        self.num_layers = config.get("num_layers", 8)
