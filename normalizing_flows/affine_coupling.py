@@ -32,6 +32,17 @@ class Translation(torch.nn.Module):
     def forward(self, x):
         return self.ln(x)
 
+class Permute(torch.nn.Module):
+    def __init__(self, num_features):
+        super().__init__()
+        self.perm = torch.randperm(num_features)
+        self.inv_perm = torch.argsort(self.perm)
+
+    def forward(self, x):
+        return x[:, self.perm], 0.0  # no log det
+
+    def inverse(self, x):
+        return x[:, self.inv_perm]
 
 class AffineCoupling(torch.nn.Module):
     def __init__(self, size: int, s: Optional[Scale] = None, t: Optional[Translation] = None, d: int = 1, mask: Optional[torch.Tensor] = None):
@@ -78,8 +89,6 @@ class AffineCoupling(torch.nn.Module):
         recovered = self.inverse(y)
         print(torch.min(recovered-x), torch.max(recovered-x))
         assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
-
-import torch.nn as nn
 
 class BatchNormFlow(torch.nn.Module):
     def __init__(self, dim, momentum=0.9, eps=1e-5):
@@ -137,6 +146,8 @@ class NormalizingFlow(torch.nn.Module):
                 mask = torch.zeros(input_dim)
                 mask[:input_dim//2] = 1.
             self.layers.append(AffineCoupling(size=input_dim, mask=mask))
+            if i % 2 == 0:
+                self.layers.append(Permute(input_dim))
             self.layers.append(BatchNormFlow(input_dim))
 
     def forward_train(self, x):
