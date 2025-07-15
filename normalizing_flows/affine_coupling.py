@@ -7,22 +7,34 @@ class Scale(torch.nn.Module):
     def __init__(self, input_dim: int, scale_init: float = 0.4):
         super().__init__()
         self.scale = self.scale = torch.nn.Parameter(torch.full((input_dim,), scale_init))
+        hidden_size = input_dim * 2
+        self.ln = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, input_dim)
+        )
 
     def forward(self, x):
         x = torch.tanh(x)
+        x = self.ln(x)
         return x*self.scale
 
 class Translation(torch.nn.Module):
     def __init__(self, size: int):
         super().__init__()
-        self.ln = torch.nn.Linear(size, size, bias = True)
+        hidden_size = size * 2
+        self.ln = torch.nn.Sequential(
+            torch.nn.Linear(size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, size)
+        )
 
     def forward(self, x):
         return self.ln(x)
 
 
 class AffineCoupling(torch.nn.Module):
-    def __init__(self, size: int, s: Optional[Scale] = None, t: Optional[Translation] = None, d: int = 2, mask: Optional[torch.Tensor] = None):
+    def __init__(self, size: int, s: Optional[Scale] = None, t: Optional[Translation] = None, d: int = 1, mask: Optional[torch.Tensor] = None):
         super().__init__()
         if mask is not None:
             self.mask = mask
@@ -40,14 +52,16 @@ class AffineCoupling(torch.nn.Module):
         self.d = d
         self.size = size
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         assert len(x.size()) == 2
         assert x.size(1) >= self.d
-        y = torch.empty(x.size())
-        y = self.mask * x
-        self.exp_s = torch.exp(self.s(self.mask*x)) # necessary to compute jacobian
-        y += (1-self.mask) * (x * self.exp_s + self.t(self.mask*x))
-        return y
+        x_masked = self.mask * x
+        s = self.s(x_masked)
+        t = self.t(x_masked)
+        exp_s = torch.exp(s)
+        y = x_masked + (1 - self.mask) * (x * exp_s + t)
+        log_det_J = ((1 - self.mask) * s).sum(dim=1)
+        return y, log_det_J
 
     def inverse(self, y: torch.Tensor) -> torch.Tensor:
         assert len(y.size()) == 2
@@ -60,7 +74,7 @@ class AffineCoupling(torch.nn.Module):
     def test_identity(self, tolerance = 1e-6):
         size = (3, self.size)
         x = torch.rand(size)
-        y = self.forward(x)
+        y,_ = self.forward(x)
         recovered = self.inverse(y)
         print(torch.min(recovered-x), torch.max(recovered-x))
         assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
@@ -99,6 +113,16 @@ class BatchNormFlow(torch.nn.Module):
         x_hat = (y - self.beta) / torch.exp(self.log_gamma)
         x = x_hat * torch.sqrt(self.running_var + self.eps) + self.running_mean
         return x
+    
+    def test_identity(self, tolerance=1e-6):
+        size = (3, self.log_gamma.size(0))
+        x = torch.rand(size)
+        y, _ = self.forward(x)
+        self.training = False
+        y, _ = self.forward(x)
+        recovered = self.inverse(y)
+        print(torch.min(recovered-x), torch.max(recovered-x))
+        assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
 
 class NormalizingFlow(torch.nn.Module):
     def __init__(self, input_dim, num_layers, masks:list[Optional[torch.Tensor]]=[]):
@@ -110,7 +134,8 @@ class NormalizingFlow(torch.nn.Module):
             if masks[i] is not None:
                 mask = masks[i]
             else:
-                mask = (torch.arange(input_dim) % 2 == i % 2).float()
+                mask = torch.zeros(input_dim)
+                mask[:input_dim//2] = 1.
             self.layers.append(AffineCoupling(size=input_dim, mask=mask))
             self.layers.append(BatchNormFlow(input_dim))
 
@@ -121,11 +146,8 @@ class NormalizingFlow(torch.nn.Module):
                 x, log_det = layer(x)
                 log_det_J += log_det
             else:
-                x_masked = layer.mask * x
-                s = layer.s(x_masked)
-                exp_s = torch.exp(s)
-                x = layer(x)
-                log_det_J += ((1 - layer.mask) * s).sum(dim=1)
+                x, log_det = layer.forward(x)
+                log_det_J += log_det
         return x, log_det_J
 
     def inverse(self, z):
@@ -136,6 +158,8 @@ class NormalizingFlow(torch.nn.Module):
     def test_identity(self, tolerance=1e-6):
         size = (3, self.layers[0].size)
         x = torch.rand(size)
+        _, _ = self.forward_train(x)
+        self.eval()
         z, _ = self.forward_train(x)
         recovered = self.inverse(z)
         print(torch.min(recovered-x), torch.max(recovered-x))
