@@ -14,14 +14,14 @@ def compute_loss(data, model):
 
 config = Config('config.yaml')
 
-X, _ = make_moons(n_samples=20000, noise=0.1)
+X, _ = make_moons(n_samples=config.samples, noise=0.1)
 x_tensor = torch.tensor(X, dtype=torch.float32)
 dataset = data.TensorDataset(x_tensor)
-dataloader = data.DataLoader(dataset, batch_size=256, shuffle=True)
+dataloader = data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-model = NormalizingFlow(input_dim=config.input_dim, num_layers=config.num_layers)
+model = NormalizingFlow(input_dim=config.input_dim, num_layers=config.num_layers, hidden_size=config.hidden_size)
 model.train()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 for epoch in range(config.num_epochs):
     for batch in dataloader:
         loss = compute_loss(batch[0], model)

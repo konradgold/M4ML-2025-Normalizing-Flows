@@ -4,29 +4,29 @@ from typing import Optional
 
 
 class Scale(torch.nn.Module):
-    def __init__(self, input_dim: int, scale_init: float = 0.9):
+    def __init__(self, in_put_dim: int, out_dim: int, hidden_size: Optional[int] = None):
         super().__init__()
-        self.scale = self.scale = torch.nn.Parameter(torch.full((input_dim,), scale_init))
-        hidden_size = input_dim * 2
+        if hidden_size is None:
+            hidden_size = in_put_dim * 2
         self.ln = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, hidden_size),
+            torch.nn.Linear(in_put_dim, hidden_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size, input_dim)
+            torch.nn.Linear(hidden_size, out_dim)
         )
 
     def forward(self, x):
-        x = torch.tanh(x)
         x = self.ln(x)
-        return x*self.scale
+        return x#*self.scale
 
 class Translation(torch.nn.Module):
-    def __init__(self, size: int):
+    def __init__(self, in_dim: int, out_dim: int, hidden_size: Optional[int] = None):
         super().__init__()
-        hidden_size = size * 2
+        if hidden_size is None:
+            hidden_size = in_dim * 2
         self.ln = torch.nn.Sequential(
-            torch.nn.Linear(size, hidden_size),
+            torch.nn.Linear(in_dim, hidden_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size, size)
+            torch.nn.Linear(hidden_size, out_dim)
         )
 
     def forward(self, x):
@@ -42,44 +42,50 @@ class Permute(torch.nn.Module):
         return x[:, self.perm], 0.0  # no log det
 
     def inverse(self, x):
-        return x[:, self.inv_perm]
+        return x[:, self.perm]
 
 class AffineCoupling(torch.nn.Module):
-    def __init__(self, size: int, s: Optional[Scale] = None, t: Optional[Translation] = None, d: int = 1, mask: Optional[torch.Tensor] = None):
+    def __init__(self, size: int, s: Optional[Scale] = None, t: Optional[Translation] = None, d: int = 1, mask: Optional[torch.Tensor] = None, hidden_size: Optional[int] = None):
         super().__init__()
         if mask is not None:
             self.mask = mask
         else:
             self.mask = torch.zeros(size)
             self.mask[:d] = 1.
+        self.mask = self.mask.bool()
         if s is not None:
             self.s = s
         else:
-            self.s = Scale(size)
+            self.s = Scale(int(self.mask.sum().item()), size - int(self.mask.sum().item()), hidden_size=hidden_size)
         if t is not None:
             self.t = t
         else:
-            self.t = Translation(size)
+            self.t = Translation(int(self.mask.sum().item()), size - int(self.mask.sum().item()), hidden_size=hidden_size)
         self.d = d
         self.size = size
     
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         assert len(x.size()) == 2
         assert x.size(1) >= self.d
-        x_masked = self.mask * x
-        s = self.s(x_masked)
-        t = self.t(x_masked)
+        y = torch.empty_like(x)
+        p_masked = x[:, self.mask]
+        n_masked = x[:, ~self.mask]
+        s = self.s(p_masked)
+        t = self.t(p_masked)
         exp_s = torch.exp(s)
-        y = x_masked + (1 - self.mask) * (x * exp_s + t)
-        log_det_J = ((1 - self.mask) * s).sum(dim=1)
+        y[:, self.mask] = p_masked
+        y[:, ~self.mask] = n_masked * exp_s + t
+        log_det_J = s.sum(dim=1)
         return y, log_det_J
 
     def inverse(self, y: torch.Tensor) -> torch.Tensor:
         assert len(y.size()) == 2
         x = torch.empty(y.size())
-        x = self.mask * y
-        self.exp_ns = torch.exp(-self.s(self.mask*y)) # necessary to compute jacobian
-        x += (1-self.mask) * ((y - self.t(self.mask*y)) * self.exp_ns)
+        p_y = y[:, self.mask]
+        n_y = y[:, ~self.mask]
+        self.exp_ns = torch.exp(-self.s(p_y)) # necessary to compute jacobian
+        x[:, self.mask] = p_y
+        x[:, ~self.mask] = (n_y - self.t(p_y)) * self.exp_ns
         return x
 
     def test_identity(self, tolerance = 1e-6):
@@ -134,7 +140,7 @@ class BatchNormFlow(torch.nn.Module):
         assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
 
 class NormalizingFlow(torch.nn.Module):
-    def __init__(self, input_dim, num_layers, masks:list[Optional[torch.Tensor]]=[]):
+    def __init__(self, input_dim, num_layers, masks:list[Optional[torch.Tensor]]=[], hidden_size: Optional[int] = None):
         if len(masks) == 0:
             masks = [None] * num_layers
         super().__init__()
@@ -145,10 +151,8 @@ class NormalizingFlow(torch.nn.Module):
             else:
                 mask = torch.zeros(input_dim)
                 mask[:input_dim//2] = 1.
-            self.layers.append(AffineCoupling(size=input_dim, mask=mask))
-            if i % 2 == 0:
-                self.layers.append(Permute(input_dim))
-            self.layers.append(BatchNormFlow(input_dim))
+            self.layers.append(AffineCoupling(size=input_dim, mask=mask, hidden_size=hidden_size))
+            self.layers.append(Permute(input_dim))
 
     def forward_train(self, x):
         log_det_J = torch.zeros(x.size(0))
