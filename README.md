@@ -1,86 +1,11 @@
----
-jupytext:
-  text_representation:
-    extension: .md
-    format_name: myst
-    format_version: 0.13
-    jupytext_version: 1.16.7
-kernelspec:
-  display_name: Python 3
-  language: python
-  name: python3
----
-# Normalizing Flows with Coupling Layers
+## Usage
+Most of the experiments are run in normalizing_flows/demonstration.ipnyp.
+The model is defined in `normalizing_flows/affine_coupling.py`, and the training loop in `normalizing_flows/train.py`. As a utility, most configurations can be changed in `normalizing_flows/config.py`, alternatively, a .yml file can be designated for the configuration, to allow for faster comparisons, but we did not end up needing it. To visualise the progression of the reconstruction/deconstruction of the 2D-moons, we used the visualise.py file. It can be called by
 
-```{code-cell} ipython3
-:tags: [remove-cell]
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import torch
-import torch.nn as nn
-from sklearn.datasets import make_moons
-from torch.distributions import MultivariateNormal
-
-# Install and import FrEIA (if available)
-try:
-    from FrEIA.framework import SequenceINN
-    from FrEIA.modules import AffineCoupling, PermuteRandom
-    FREIA_AVAILABLE = True
-except ImportError:
-    FREIA_AVAILABLE = False
-
-# Generate two-moons data
-X, _ = make_moons(n_samples=500, noise=0.05)
-X = torch.tensor(X, dtype=torch.float32)
-
-if FREIA_AVAILABLE:
-    # Define simple RealNVP with 4 coupling layers using FrEIA
-    inn = SequenceINN(2)
-    for i in range(4):
-        inn.append(AffineCoupling, subnet_constructor=lambda c_in, c_out: nn.Sequential(
-            nn.Linear(c_in, 128), nn.ReLU(), nn.Linear(128, c_out)))
-        inn.append(PermuteRandom, seed=i)
-
-    # Forward pass: map data to latent space
-    z, log_jac_det = inn(X)
-    # Sample from standard Gaussian and invert
-    z_sample = torch.randn_like(z)
-    x_sample = inn.inverse(z_sample)
-    x_sample = x_sample.detach().numpy()
-    z = z.detach().numpy()
-else:
-    z = np.zeros_like(X)
-    x_sample = np.zeros_like(X)
-
-# Plotting
-fig, axs = plt.subplots(1, 3, figsize=(15, 4))
-
-axs[0].set_title("Original Two-Moons Data")
-axs[0].scatter(X[:, 0], X[:, 1], s=10, alpha=0.6)
-axs[0].set_xlim(-2, 3)
-axs[0].set_ylim(-1.5, 2)
-
-axs[1].set_title("Latent Space (After Flow)")
-axs[1].scatter(z[:, 0], z[:, 1], s=10, alpha=0.6)
-axs[1].set_xlim(-3, 3)
-axs[1].set_ylim(-3, 3)
-
-axs[2].set_title("Generated Samples (Inverse Flow)")
-axs[2].scatter(x_sample[:, 0], x_sample[:, 1], s=10, alpha=0.6)
-axs[2].set_xlim(-2, 3)
-axs[2].set_ylim(-1.5, 2)
-
-for ax in axs:
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-plt.tight_layout()
-plt.suptitle("Normalizing Flows: Two-Moons ↔ Latent Gaussian", fontsize=14, y=1.05)
-plt.show()
-
+```{python}
+uv run normalize_flows/visualise.py
 ```
+
 
 
 ## 🌟 Motivation
