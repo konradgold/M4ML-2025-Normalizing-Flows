@@ -1,11 +1,10 @@
-from math import log
 import torch
-import torch.utils.data as data
-from affine_coupling import NormalizingFlow
-from config import Config
 from sklearn.datasets import make_moons
 from scipy.spatial.distance import directed_hausdorff
+import numpy as np
 
+np.random.seed(6)
+torch.manual_seed(6)
 
 
 def compute_loss(data, model):
