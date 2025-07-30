@@ -20,3 +20,4 @@ class Config:
         self.learning_rate = config.get("learning_rate", 1e-3)
         self.samples = config.get("samples", 12000)
         self.log_interval = config.get("log_interval", 1)
+        self.seed = config.get("seed", 42)

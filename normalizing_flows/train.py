@@ -1,11 +1,19 @@
+from math import log
 import torch
 from sklearn.datasets import make_moons
 from scipy.spatial.distance import directed_hausdorff
 import numpy as np
+import random
 
-np.random.seed(42)
-torch.manual_seed(42)
 
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def compute_loss(data, model):
     z, log_det_J = model.forward_train(data)
@@ -14,6 +22,7 @@ def compute_loss(data, model):
 
 
 def train_loop(config, model, dataloader):
+    set_seed(config.seed) # ensures reproducibility
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 
     loss_history = []
