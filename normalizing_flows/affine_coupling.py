@@ -3,6 +3,9 @@ from typing import Optional
 
 
 class Scale(torch.nn.Module):
+    """
+    A simple linear layer that outputs a vector of the same size as the input.
+    """
     def __init__(self, input_dim: int, out_dim: int, hidden_size: Optional[int] = None):
         super().__init__()
         if hidden_size is None:
@@ -14,11 +17,14 @@ class Scale(torch.nn.Module):
         )
 
     def forward(self, x):
-        x = self.ln(x)
-        return x
+        return self.ln(x)
 
 
 class Translation(torch.nn.Module):
+    """
+    A simple linear layer that outputs a vector of the same size as the input.
+    """
+
     def __init__(self, in_dim: int, out_dim: int, hidden_size: Optional[int] = None):
         super().__init__()
         if hidden_size is None:
@@ -34,6 +40,9 @@ class Translation(torch.nn.Module):
     
 
 class Permute(torch.nn.Module):
+    """
+    This layer randomly permutes the input features. It is used to randomize the masking in the affine coupling layers.
+    """
     def __init__(self, num_features):
         super().__init__()
         self.perm = torch.randperm(num_features)
@@ -56,6 +65,7 @@ class AffineCoupling(torch.nn.Module):
             self.mask[:d] = 1.
         self.mask = self.mask.bool()
     
+        # The output size must be decreased, to that learning is independant of the masking.
         self.s = Scale(int(self.mask.sum().item()), size - int(self.mask.sum().item()), hidden_size=hidden_size)
         self.t = Translation(int(self.mask.sum().item()), size - int(self.mask.sum().item()), hidden_size=hidden_size)
         self.d = d
@@ -66,7 +76,7 @@ class AffineCoupling(torch.nn.Module):
         assert x.size(1) >= self.d
         y = torch.empty_like(x)
         p_masked = x[:, self.mask]
-        n_masked = x[:, ~self.mask]
+        n_masked = x[:, ~self.mask] # negated mask
         s = self.s(p_masked)
         t = self.t(p_masked)
         exp_s = torch.exp(s)
@@ -80,7 +90,7 @@ class AffineCoupling(torch.nn.Module):
         x = torch.empty(y.size())
         p_y = y[:, self.mask]
         n_y = y[:, ~self.mask]
-        self.exp_ns = torch.exp(-self.s(p_y)) # necessary to compute jacobian
+        self.exp_ns = torch.exp(-self.s(p_y)) 
         x[:, self.mask] = p_y
         x[:, ~self.mask] = (n_y - self.t(p_y)) * self.exp_ns
         return x
@@ -99,6 +109,7 @@ class NormalizingFlow(torch.nn.Module):
         super().__init__()
         self.layers = torch.nn.ModuleList()
         if mask is None:
+            # mask first dimensions by default
             mask = torch.zeros(input_dim)
             mask[:input_dim//2] = 1.
         for i in range(num_layers):
@@ -114,6 +125,7 @@ class NormalizingFlow(torch.nn.Module):
 
     def inverse(self, z):
         for layer in reversed(self.layers):
+            # layers are applied in reverse order during inference, inversion already implemented
             z = layer.inverse(z) # type: ignore
         return z
     
