@@ -3,8 +3,8 @@ from sklearn.datasets import make_moons
 from scipy.spatial.distance import directed_hausdorff
 import numpy as np
 
-np.random.seed(6)
-torch.manual_seed(6)
+np.random.seed(42)
+torch.manual_seed(42)
 
 
 def compute_loss(data, model):
