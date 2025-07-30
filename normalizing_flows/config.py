@@ -9,6 +9,9 @@ class Config:
         except FileNotFoundError:
             print(f"Config file not found: {path}")
             config = {}
+        # Set default values for configuration parameters
+        # If a parameter is not found in the config file, it will use the default value.
+        # Add to taste
         self.num_epochs = config.get("num_epochs", 100)
         self.batch_size = config.get("batch_size", 128)
         self.input_dim = config.get("input_dim", 2)
