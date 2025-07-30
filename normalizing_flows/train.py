@@ -19,6 +19,7 @@ def train_loop(config, model, dataloader):
 
     loss_history = []
     hausdorff_hist = []
+    l_store = 0.
     for epoch in range(config.num_epochs):
         for batch in dataloader:
             loss = compute_loss(batch[0], model)
@@ -26,10 +27,13 @@ def train_loop(config, model, dataloader):
             loss.backward()
             optimizer.step()
             # Store loss for plotting
-            loss_history.append(loss.item())
+            l_store += loss.item()
+            
         # Clear previous console output before printing new log
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}") # type: ignore
         if epoch % config.log_interval == 0:
+            loss_history.append(l_store/ len(dataloader))
+            l_store = 0.
             # Compute Hausdorff distance between generated samples and original data
             # Convert tensors to numpy arrays if needed
             z_samples = torch.randn(1000, config.input_dim)
