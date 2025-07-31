@@ -6,7 +6,13 @@ The model is defined in `normalizing_flows/affine_coupling.py`, and the training
 uv run normalize_flows/visualise.py
 ```
 
+To run the test file, call
 
+```{python}
+uv run normalize_flows/test_coupling.py
+```
+
+The purpose of this file is to make sure that the shapes are as expected, and the invertability is assured.
 
 ## 🌟 Motivation
 

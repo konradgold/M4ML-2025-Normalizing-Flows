@@ -52,7 +52,7 @@ class Permute(torch.nn.Module):
         return x[:, self.perm], 0.0  # no log det
 
     def inverse(self, x):
-        return x[:, self.perm]
+        return x[:, self.inv_perm]
 
 
 class AffineCoupling(torch.nn.Module):
@@ -102,6 +102,7 @@ class AffineCoupling(torch.nn.Module):
         recovered = self.inverse(y)
         print(f"Min: {torch.min(recovered-x)}, Max: {torch.max(recovered-x)}")
         assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
+        return True
 
 
 class NormalizingFlow(torch.nn.Module):
@@ -137,4 +138,5 @@ class NormalizingFlow(torch.nn.Module):
         recovered = self.inverse(z)
         print(f"Min: {torch.min(recovered-x)}, Max: {torch.max(recovered-x)}")
         assert torch.allclose(recovered, x, atol=tolerance, rtol=tolerance)
+        return True
     
